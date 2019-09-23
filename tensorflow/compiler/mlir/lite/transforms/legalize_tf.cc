@@ -33,9 +33,9 @@ limitations under the License.
 #include "mlir/Support/Functional.h"  // TF:local_config_mlir
 #include "mlir/Support/LLVM.h"  // TF:local_config_mlir
 #include "tensorflow/compiler/mlir/lite/ir/tfl_ops.h"
+#include "tensorflow/compiler/mlir/lite/quantization/quantization_utils.h"
 #include "tensorflow/compiler/mlir/lite/transforms/passes.h"
 #include "tensorflow/compiler/mlir/lite/utils/attribute_utils.h"
-#include "tensorflow/compiler/mlir/lite/utils/quantization_utils.h"
 #include "tensorflow/compiler/mlir/lite/utils/validators.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 
@@ -66,13 +66,11 @@ struct LegalizeTF : public FunctionPass<LegalizeTF> {
 
 DECL_CONVERT_OP(Concat);
 DECL_CONVERT_OP(ConcatV2);
-DECL_CONVERT_OP(Gather);
-DECL_CONVERT_OP(GatherV2);
 DECL_CONVERT_OP(MatMul);
 DECL_CONVERT_OP(Pack);
+DECL_CONVERT_OP(Reshape);
 DECL_CONVERT_OP(Split);
 DECL_CONVERT_OP(SplitV);
-DECL_CONVERT_OP(TopKV2);
 DECL_CONVERT_OP(Unpack);
 
 #undef DECL_CONVERT_OP
@@ -115,27 +113,6 @@ PatternMatchResult ConvertTFConcatV2Op::matchAndRewrite(
   return matchSuccess();
 }
 
-PatternMatchResult mlir::TFL::ConvertTFGatherOp::matchAndRewrite(
-    Operation* op, PatternRewriter& rewriter) const {
-  // Gather in TF -> Gather in TFL with axis=0
-  IntegerType type = IntegerType::get(32, rewriter.getContext());
-  rewriter.replaceOpWithNewOp<TFL::GatherOp>(
-      op, op->getOperand(0), op->getOperand(1), IntegerAttr::get(type, 0));
-  return matchSuccess();
-}
-
-PatternMatchResult ConvertTFGatherV2Op::matchAndRewrite(
-    Operation* op, PatternRewriter& rewriter) const {
-  auto tf_op = cast<TF::GatherV2Op>(op);
-
-  ElementsAttr axis;
-  if (!matchPattern(tf_op.axis(), m_Constant(&axis))) return matchFailure();
-  rewriter.replaceOpWithNewOp<GatherOp>(op, op->getOperand(0),
-                                        op->getOperand(1),
-                                        ExtractSingleElementAsInteger(axis));
-  return matchSuccess();
-}
-
 // The following is effectively:
 // def : Pat<
 //   (TF_MatMulOp $a, $b, ConstBoolAttrFalse:$transpose_a,
@@ -175,6 +152,30 @@ PatternMatchResult ConvertTFPackOp::matchAndRewrite(
   return matchSuccess();
 }
 
+PatternMatchResult ConvertTFReshapeOp::matchAndRewrite(
+    Operation* op, PatternRewriter& rewriter) const {
+  auto tf_reshape_op = cast<TF::ReshapeOp>(op);
+
+  auto* input = tf_reshape_op.tensor();
+  auto* shape = tf_reshape_op.shape();
+
+  ShapedType shape_type = shape->getType().cast<ShapedType>();
+  // The tfl reshape's #2 operand needs to i32 tensor type, so we have to cast.
+  if (!shape_type.getElementType().isInteger(32)) {
+    auto new_shape = shape_type.getShape();
+    IntegerType new_ele_type = rewriter.getIntegerType(32);
+    ShapedType new_type = rewriter.getTensorType(new_shape, new_ele_type);
+    // Uses TF::CastOp to be folded if the shape input is a constant.
+    shape = rewriter
+                .create<TF::CastOp>(op->getLoc(), new_type, shape,
+                                    rewriter.getBoolAttr(false))
+                .y();
+  }
+  rewriter.replaceOpWithNewOp<ReshapeOp>(op, tf_reshape_op.output()->getType(),
+                                         input, shape);
+  return matchSuccess();
+}
+
 PatternMatchResult ConvertTFSplitOp::matchAndRewrite(
     Operation* op, PatternRewriter& rewriter) const {
   auto tf_split_op = cast<TF::SplitOp>(op);
@@ -207,14 +208,6 @@ PatternMatchResult ConvertTFSplitVOp::matchAndRewrite(
   return matchSuccess();
 }
 
-PatternMatchResult ConvertTFTopKV2Op::matchAndRewrite(
-    Operation* op, PatternRewriter& rewriter) const {
-  // TopK in TFL is always sorted so we ignore that attribute here.
-  rewriter.replaceOpWithNewOp<TFL::TopKV2Op>(op, op->getOperand(0),
-                                             op->getOperand(1));
-  return matchSuccess();
-}
-
 PatternMatchResult ConvertTFUnpackOp::matchAndRewrite(
     Operation* op, PatternRewriter& rewriter) const {
   auto tf_unpack_op = cast<TF::UnpackOp>(op);
@@ -237,17 +230,18 @@ void LegalizeTF::runOnFunction() {
 
   // Add the generated patterns to the list.
   populateWithGenerated(ctx, &patterns);
-  RewriteListBuilder<ConvertTFConcatOp, ConvertTFConcatV2Op, ConvertTFGatherOp,
-                     ConvertTFGatherV2Op, ConvertTFMatMulOp, ConvertTFPackOp,
-                     ConvertTFSplitOp, ConvertTFSplitVOp, ConvertTFTopKV2Op,
-                     ConvertTFUnpackOp>::build(patterns, ctx);
-  applyPatternsGreedily(func, std::move(patterns));
+  patterns.insert<ConvertTFConcatOp, ConvertTFConcatV2Op, ConvertTFMatMulOp,
+                  ConvertTFPackOp, ConvertTFReshapeOp, ConvertTFSplitOp,
+                  ConvertTFSplitVOp, ConvertTFUnpackOp>(ctx);
+  applyPatternsGreedily(func, patterns);
 }
 
 }  // namespace
 
 // Creates an instance of the TensorFlow Lite dialect LegalizeTF pass.
-FunctionPassBase* CreateLegalizeTFPass() { return new LegalizeTF(); }
+std::unique_ptr<OpPassBase<FuncOp>> CreateLegalizeTFPass() {
+  return std::make_unique<LegalizeTF>();
+}
 
 static PassRegistration<LegalizeTF> pass(
     "tfl-legalize-tf", "Legalize from TensorFlow to TensorFlow Lite dialect");

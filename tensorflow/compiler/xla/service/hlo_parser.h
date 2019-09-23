@@ -16,7 +16,6 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_XLA_SERVICE_HLO_PARSER_H_
 #define TENSORFLOW_COMPILER_XLA_SERVICE_HLO_PARSER_H_
 
-#include "absl/base/macros.h"
 #include "absl/memory/memory.h"
 #include "absl/strings/string_view.h"
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
@@ -45,13 +44,6 @@ StatusOr<std::unique_ptr<HloModule>> ParseAndReturnUnverifiedModule(
 StatusOr<std::unique_ptr<HloModule>> ParseAndReturnUnverifiedModule(
     absl::string_view str);
 
-ABSL_DEPRECATED("Use ParseAndReturnUnverifiedModule instead")
-StatusOr<std::unique_ptr<HloModule>> ParseHloString(
-    absl::string_view str, const HloModuleConfig& config);
-
-ABSL_DEPRECATED("Use ParseAndReturnUnverifiedModule instead")
-StatusOr<std::unique_ptr<HloModule>> ParseHloString(absl::string_view str);
-
 // Given a string in the HloModule::ToString() format, parses the string and
 // builds the HloModule in place at the given module pointer. 'module' must
 // point to an empty module (no computations).
@@ -61,6 +53,12 @@ Status ParseHloString(absl::string_view str, HloModule* module);
 // sharding, i.e. just the rhs of the "sharding={...}" attribute string, e.g.,
 // "{replicated}".
 StatusOr<HloSharding> ParseSharding(absl::string_view str);
+
+// Parses frontend attributes from str. str is supposed to contain the body of
+// the frontend attributes , i.e. just the rhs of the
+// "frontend_attributes={...}" attribute string, e.g.,
+// "{attr_a=a,attr_b=b}".
+StatusOr<FrontendAttributes> ParseFrontendAttributes(absl::string_view str);
 
 // Parses parameter replication from str. str is supposed to contain the body of
 // the parameter replication, i.e. just the rhs of the

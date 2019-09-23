@@ -23,8 +23,6 @@ limitations under the License.
 #include <memory>
 #include <string>
 
-#include "tensorflow/lite/delegates/nnapi/nnapi_delegate.h"
-
 namespace tflite {
 namespace evaluation {
 
@@ -75,6 +73,7 @@ TfLiteStatus GetSortedFileNames(const std::string& directory,
   return kTfLiteOk;
 }
 
+// TODO(b/138448769): Migrate delegate helper APIs to lite/testing.
 Interpreter::TfLiteDelegatePtr CreateNNAPIDelegate() {
 #if defined(__ANDROID__)
   return Interpreter::TfLiteDelegatePtr(
@@ -86,23 +85,33 @@ Interpreter::TfLiteDelegatePtr CreateNNAPIDelegate() {
 #endif  // defined(__ANDROID__)
 }
 
+Interpreter::TfLiteDelegatePtr CreateNNAPIDelegate(
+    StatefulNnApiDelegate::Options options) {
+#if defined(__ANDROID__)
+  return Interpreter::TfLiteDelegatePtr(
+      new StatefulNnApiDelegate(options), [](TfLiteDelegate* delegate) {
+        delete reinterpret_cast<StatefulNnApiDelegate*>(delegate);
+      });
+#else
+  return Interpreter::TfLiteDelegatePtr(nullptr, [](TfLiteDelegate*) {});
+#endif  // defined(__ANDROID__)
+}
+
 #if defined(__ANDROID__)
 Interpreter::TfLiteDelegatePtr CreateGPUDelegate(
-    tflite::FlatBufferModel* model, TfLiteGpuDelegateOptions* options) {
-  return Interpreter::TfLiteDelegatePtr(TfLiteGpuDelegateCreate(options),
-                                        &TfLiteGpuDelegateDelete);
+    tflite::FlatBufferModel* model, TfLiteGpuDelegateOptionsV2* options) {
+  return Interpreter::TfLiteDelegatePtr(TfLiteGpuDelegateV2Create(options),
+                                        &TfLiteGpuDelegateV2Delete);
 }
 #endif  // defined(__ANDROID__)
 
 Interpreter::TfLiteDelegatePtr CreateGPUDelegate(
     tflite::FlatBufferModel* model) {
 #if defined(__ANDROID__)
-  TfLiteGpuDelegateOptions options;
-  options.metadata = TfLiteGpuDelegateGetModelMetadata(model->GetModel());
-  options.compile_options.precision_loss_allowed = 1;
-  options.compile_options.preferred_gl_object_type =
-      TFLITE_GL_OBJECT_TYPE_FASTEST;
-  options.compile_options.dynamic_batch_enabled = 0;
+  TfLiteGpuDelegateOptionsV2 options = TfLiteGpuDelegateOptionsV2Default();
+  options.is_precision_loss_allowed = 1;
+  options.inference_preference =
+      TFLITE_GPU_INFERENCE_PREFERENCE_SUSTAINED_SPEED;
 
   return CreateGPUDelegate(model, &options);
 #else

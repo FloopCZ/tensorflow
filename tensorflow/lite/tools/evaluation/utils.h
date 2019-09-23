@@ -20,10 +20,11 @@ limitations under the License.
 #include <vector>
 
 #if defined(__ANDROID__)
-#include "tensorflow/lite/delegates/gpu/gl_delegate.h"
+#include "tensorflow/lite/delegates/gpu/delegate.h"
 #endif
 
 #include "tensorflow/lite/context.h"
+#include "tensorflow/lite/delegates/nnapi/nnapi_delegate.h"
 #include "tensorflow/lite/model.h"
 
 namespace tflite {
@@ -38,10 +39,13 @@ TfLiteStatus GetSortedFileNames(const std::string& directory,
 
 Interpreter::TfLiteDelegatePtr CreateNNAPIDelegate();
 
+Interpreter::TfLiteDelegatePtr CreateNNAPIDelegate(
+    StatefulNnApiDelegate::Options options);
+
 Interpreter::TfLiteDelegatePtr CreateGPUDelegate(FlatBufferModel* model);
 #if defined(__ANDROID__)
 Interpreter::TfLiteDelegatePtr CreateGPUDelegate(
-    FlatBufferModel* model, TfLiteGpuDelegateOptions* options);
+    FlatBufferModel* model, TfLiteGpuDelegateOptionsV2* options);
 #endif
 
 }  // namespace evaluation
