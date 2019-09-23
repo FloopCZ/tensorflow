@@ -108,6 +108,8 @@ $(wildcard tensorflow/lite/experimental/ruy/blocking_counter.cc) \
 $(wildcard tensorflow/lite/experimental/ruy/context.cc) \
 $(wildcard tensorflow/lite/experimental/ruy/detect_arm.cc) \
 $(wildcard tensorflow/lite/experimental/ruy/detect_x86.cc) \
+$(wildcard tensorflow/lite/experimental/ruy/have_built_path_for_avx2.cc) \
+$(wildcard tensorflow/lite/experimental/ruy/have_built_path_for_avx512.cc) \
 $(wildcard tensorflow/lite/experimental/ruy/kernel_arm32.cc) \
 $(wildcard tensorflow/lite/experimental/ruy/kernel_arm64.cc) \
 $(wildcard tensorflow/lite/experimental/ruy/kernel_avx2.cc) \
