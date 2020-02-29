@@ -14,11 +14,8 @@ limitations under the License.
 ==============================================================================*/
 
 include "mlir/IR/OpBase.td"
-include "mlir/Dialect/StandardOps/Ops.td"
+include "mlir/Dialect/StandardOps/IR/Ops.td"
 include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.td"
-
-def CreateTFShapeOp : NativeCodeCall<
-    "$_builder.create<TF::ShapeOp>($0->getLoc(), $1, $2)">;
 
 //===----------------------------------------------------------------------===//
 // TensorList transformation patterns.
@@ -29,7 +26,3 @@ def CreateTFShapeOp : NativeCodeCall<
 def ConvertTensorListFromTensor : Pat<
   (TF_TensorListFromTensorOp $tensor, $element_shape),
   (replaceWithValue $tensor)>;
-
-def ConvertTensorListStack : Pat<
-  (TF_TensorListStackOp $input, $element_shape, $num_elements),
-  (replaceWithValue $input)>;

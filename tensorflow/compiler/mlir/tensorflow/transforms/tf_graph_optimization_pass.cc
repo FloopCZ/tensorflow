@@ -16,10 +16,10 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/transforms/tf_graph_optimization_pass.h"
 
 #include "llvm/Support/CommandLine.h"
-#include "mlir/IR/Builders.h"  // TF:local_config_mlir
-#include "mlir/IR/Identifier.h"  // TF:local_config_mlir
-#include "mlir/IR/Location.h"  // TF:local_config_mlir
-#include "mlir/Pass/Pass.h"  // TF:local_config_mlir
+#include "mlir/IR/Builders.h"  // TF:llvm-project
+#include "mlir/IR/Identifier.h"  // TF:llvm-project
+#include "mlir/IR/Location.h"  // TF:llvm-project
+#include "mlir/Pass/Pass.h"  // TF:llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/translate/export_graphdef.h"
 #include "tensorflow/compiler/mlir/tensorflow/translate/import_model.h"
 #include "tensorflow/compiler/mlir/tensorflow/translate/mlir_roundtrip_flags.h"
@@ -59,7 +59,7 @@ void GraphOptPass::runOnModule() {
   // Convert MLIR to Graph
   FunctionLibraryDefinition flib_def(OpRegistry::Global(),
                                      FunctionDefLibrary());
-  ExporterConfigs confs;
+  GraphExportConfig confs;
   auto graph = absl::make_unique<Graph>(flib_def);
   Status status = ConvertMlirToGraph(module_in, confs, &graph, &flib_def);
   if (!status.ok()) {
@@ -90,7 +90,7 @@ void GraphOptPass::runOnModule() {
 
   // Convert Graph to MLIR
   GraphDebugInfo debug_info;
-  NodeSpecs specs;
+  GraphImportConfig specs;
   auto module_or_status =
       ConvertGraphToMlir(**options.graph, debug_info, flib_def, specs, &ctx);
   if (!module_or_status.ok()) {
@@ -141,7 +141,7 @@ static llvm::cl::OptionCategory clOptionsCategory(DEBUG_TYPE " options");
 // NOLINTNEXTLINE
 static llvm::cl::list<std::string> cl_pass_list(
     "graph-passes", llvm::cl::value_desc("list"),
-    llvm::cl::desc("comma seprarated list of GraphOptimizationPass to run."),
+    llvm::cl::desc("comma separated list of GraphOptimizationPass to run."),
     llvm::cl::CommaSeparated, llvm::cl::cat(clOptionsCategory));
 
 class GraphOptByNamePass : public GraphOptPass {

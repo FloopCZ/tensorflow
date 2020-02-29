@@ -14,8 +14,8 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/core/distributed_runtime/worker_session.h"
 
+#include "tensorflow/core/lib/monitoring/collection_registry.h"
 #include "tensorflow/core/lib/monitoring/gauge.h"
-#include "tensorflow/core/platform/monitoring.h"
 
 namespace tensorflow {
 
@@ -123,7 +123,21 @@ WorkerSession::WorkerSession(
   // provided). For builds using "tensorflow/core/platform/default", this is
   // currently a no-op.
   worker_session_created->GetCell()->Set(true);
-  monitoring::StartExporter();
+}
+
+Status WorkerSession::UpdateWorkerCacheAndDevices(
+    std::unique_ptr<WorkerCacheInterface> new_worker_cache,
+    std::vector<std::unique_ptr<Device>> added_remote_devices,
+    const std::vector<Device*>& removed_remote_devices) {
+  worker_cache_ = std::unique_ptr<WorkerCacheInterface>(
+      new WorkerFreeListCache(std::move(new_worker_cache)));
+  TF_RETURN_IF_ERROR(remote_device_mgr_->RemoveDevices(removed_remote_devices));
+  TF_RETURN_IF_ERROR(
+      remote_device_mgr_->AddDevices(std::move(added_remote_devices)));
+  cluster_flr_ = std::unique_ptr<ClusterFunctionLibraryRuntime>(
+      new ClusterFunctionLibraryRuntime(this, !session_name_.empty(),
+                                        remote_device_mgr()));
+  return Status::OK();
 }
 
 /* static */
@@ -155,7 +169,6 @@ WorkerSession::WorkerSession(
   // provided). For builds using "tensorflow/core/platform/default", this is
   // currently a no-op.
   worker_session_created->GetCell()->Set(true);
-  monitoring::StartExporter();
 }
 
 WorkerSession::~WorkerSession() {

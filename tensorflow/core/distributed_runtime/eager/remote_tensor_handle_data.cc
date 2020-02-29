@@ -34,11 +34,12 @@ void DestroyRemoteTensorHandle(EagerContext* ctx, const string& remote_task,
     return;
   }
 
-  eager::EagerClient* eager_client;
+  core::RefCountPtr<eager::EagerClient> eager_client;
   Status status = ctx->GetClient(remote_task, &eager_client);
   if (!status.ok()) {
-    LOG(INFO) << "Unable to destroy remote tensor handle because the target "
-              << remote_task << " is no longer available.";
+    LOG_EVERY_N_SEC(INFO, 60)
+        << "Unable to destroy remote tensor handle because the target "
+        << remote_task << " is no longer available.";
     return;
   }
 
@@ -51,14 +52,17 @@ void DestroyRemoteTensorHandle(EagerContext* ctx, const string& remote_task,
 
   VLOG(3) << "Sending request to delete " << request->DebugString();
   std::unique_ptr<EagerNode> node(
-      absl::make_unique<eager::DestroyTensorHandleNode>(std::move(request),
-                                                        eager_client, ready));
+      absl::make_unique<eager::DestroyTensorHandleNode>(
+          std::move(request), eager_client.get(), ready));
   auto& executor = ctx->Executor();
   if (executor.Async()) {
     Status status = executor.AddOrExecute(std::move(node));
     if (!status.ok()) {
-      LOG(ERROR) << "Unable to destroy remote tensor handles: "
-                 << status.error_message();
+      LOG_EVERY_N_SEC(WARNING, 60)
+          << "Unable to destroy remote tensor handles. If you are "
+             "running a tf.function, it usually indicates some op in "
+             "the graph gets an error: "
+          << status.error_message();
     }
   } else {
     // This thread may still hold tensorflow::StreamingRPCState::mu_. We need
@@ -68,8 +72,11 @@ void DestroyRemoteTensorHandle(EagerContext* ctx, const string& remote_task,
       Status status =
           ctx->Executor().AddOrExecute(absl::WrapUnique(released_node));
       if (!status.ok()) {
-        LOG(ERROR) << "Unable to destroy remote tensor handles: "
-                   << status.error_message();
+        LOG_EVERY_N_SEC(WARNING, 60)
+            << "Unable to destroy remote tensor handles. If you are "
+               "running a tf.function, it usually indicates some op in "
+               "the graph gets an error: "
+            << status.error_message();
       }
     });
   }
@@ -79,24 +86,24 @@ void DestroyRemoteTensorHandle(EagerContext* ctx, const string& remote_task,
 RemoteTensorHandleData::RemoteTensorHandleData(int64 op_id, int output_num,
                                                const TensorShape& shape,
                                                const string& remote_task,
-                                               uint64 context_id,
                                                EagerContext* ctx)
     : op_id_(op_id),
       output_num_(output_num),
       shape_(shape),
       remote_task_(remote_task),
-      context_id_(context_id),
-      ctx_(ctx) {
+      context_id_(ctx->GetContextId()),
+      context_view_id_(ctx->GetContextViewId()),
+      ctx_(*ctx) {
   DCHECK(op_id_ >= 0 && output_num_ >= 0)
       << "Op ID and output num should be >= 0. Op ID: " << op_id
       << ", Output num: " << output_num;
-  ctx->Ref();
+  ctx_.Ref();
 }
 
 RemoteTensorHandleData::~RemoteTensorHandleData() {
-  DestroyRemoteTensorHandle(ctx_, remote_task_, context_id_, op_id_,
+  DestroyRemoteTensorHandle(&ctx_, remote_task_, context_id_, op_id_,
                             output_num_, /*ready=*/true);
-  ctx_->Unref();
+  ctx_.Unref();
 }
 
 Status RemoteTensorHandleData::Tensor(const tensorflow::Tensor** t) const {
@@ -135,32 +142,36 @@ Status RemoteTensorHandleData::NumElements(int64* num_elements) const {
   return Status::OK();
 }
 
+Status RemoteTensorHandleData::Unprotect() {
+  return errors::Unavailable("Unable to unprotect a remote handle.");
+}
+
 string RemoteTensorHandleData::DebugString() const {
   return strings::StrCat("RemoteTensorHandleData:", " op_id: ", op_id_,
                          " output_num: ", output_num_);
 }
 
 UnshapedRemoteTensorHandleData::UnshapedRemoteTensorHandleData(
-    int64 op_id, int32 output_num, const string& remote_task, uint64 context_id,
-    EagerContext* ctx)
+    int64 op_id, int32 output_num, const string& remote_task, EagerContext* ctx)
     : op_id_(op_id),
       output_num_(output_num),
       delete_remote_tensor_(true),
       remote_task_(remote_task),
-      context_id_(context_id),
-      ctx_(ctx) {
+      context_id_(ctx->GetContextId()),
+      context_view_id_(ctx->GetContextViewId()),
+      ctx_(*ctx) {
   DCHECK(op_id_ >= 0 && output_num_ >= 0)
       << "Op ID and output num should be >= 0. Op ID: " << op_id
       << ", Output num: " << output_num;
-  ctx->Ref();
+  ctx_.Ref();
 }
 
 UnshapedRemoteTensorHandleData::~UnshapedRemoteTensorHandleData() {
   if (delete_remote_tensor_) {
-    DestroyRemoteTensorHandle(ctx_, remote_task_, context_id_, op_id_,
+    DestroyRemoteTensorHandle(&ctx_, remote_task_, context_id_, op_id_,
                               output_num_, /*ready=*/false);
   }
-  ctx_->Unref();
+  ctx_.Unref();
 }
 
 Status UnshapedRemoteTensorHandleData::Tensor(
@@ -198,6 +209,10 @@ Status UnshapedRemoteTensorHandleData::NumElements(int64* num_elements) const {
   return errors::Unavailable(
       "Unable to get shape information for an async remote handle. Please wait "
       "until it is ready");
+}
+
+Status UnshapedRemoteTensorHandleData::Unprotect() {
+  return errors::Unavailable("Unable to unprotect a remote handle.");
 }
 
 string UnshapedRemoteTensorHandleData::DebugString() const {

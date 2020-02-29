@@ -17,7 +17,7 @@ limitations under the License.
 
 #include <vector>
 
-#include "tensorflow/lite/schema/schema_generated.h"
+#include "tensorflow/lite/schema/mutable/schema_generated.h"
 
 namespace tflite {
 
@@ -46,11 +46,20 @@ typedef struct {
     struct {
       LSTMKernelType kernel_type;
     } lstm;
+    struct {
+      bool half_pixel_centers;
+    } resize_bilinear;
+    struct {
+      int32_t num_dims;
+    } strided_slice;
   } options;
 } OpSignature;
 
 // Returns version of builtin ops by the given signature.
 int GetBuiltinOperatorVersion(const OpSignature& op_sig);
+
+// Update operator's version of the given TFL flatbuffer model.
+void UpdateOpVersion(uint8_t* model_buffer_pointer);
 
 }  // namespace tflite
 
