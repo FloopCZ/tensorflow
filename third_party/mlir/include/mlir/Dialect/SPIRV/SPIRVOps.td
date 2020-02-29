@@ -26,38 +26,39 @@
 // op traits, arguments, results, and sections after the results are retained.
 // Besides, ops in this file must be separated via the '// -----' marker.
 
-#ifdef SPIRV_OPS
-#else
+#ifndef SPIRV_OPS
 #define SPIRV_OPS
 
-#ifdef SPIRV_BASE
-#else
+#ifndef SPIRV_BASE
 include "mlir/Dialect/SPIRV/SPIRVBase.td"
 #endif // SPIRV_BASE
 
-#ifdef SPIRV_ARITHMETIC_OPS
-#else
+#ifndef SPIRV_ARITHMETIC_OPS
 include "mlir/Dialect/SPIRV/SPIRVArithmeticOps.td"
 #endif // SPIRV_ARITHMETIC_OPS
 
-#ifdef SPIRV_CONTROLFLOW_OPS
-#else
+#ifndef SPIRV_BIT_OPS
+include "mlir/Dialect/SPIRV/SPIRVBitOps.td"
+#endif // SPIRV_BIT_OPS
+
+#ifndef SPIRV_CAST_OPS
+include "mlir/Dialect/SPIRV/SPIRVCastOps.td"
+#endif // SPIRV_CAST_OPS
+
+#ifndef SPIRV_CONTROLFLOW_OPS
 include "mlir/Dialect/SPIRV/SPIRVControlFlowOps.td"
 #endif // SPIRV_CONTROLFLOW_OPS
 
-#ifdef SPIRV_LOGICAL_OPS
-#else
+#ifndef SPIRV_LOGICAL_OPS
 include "mlir/Dialect/SPIRV/SPIRVLogicalOps.td"
 #endif // SPIRV_LOGICAL_OPS
 
-#ifdef SPIRV_STRUCTURE_OPS
-#else
+#ifndef SPIRV_STRUCTURE_OPS
 // Pull in ops for defining the SPIR-V module structure
 include "mlir/Dialect/SPIRV/SPIRVStructureOps.td"
 #endif // SPIRV_STRUCTURE_OPS
 
-#ifdef SPIRV_GLSL_OPS
-#else
+#ifndef SPIRV_GLSL_OPS
 // Pull in ops for extended instruction set for GLSL
 include "mlir/Dialect/SPIRV/SPIRVGLSLOps.td"
 #endif // SPIRV_GLSL_OPS
@@ -122,6 +123,8 @@ def SPV_AccessChainOp : SPV_Op<"AccessChain", [NoSideEffect]> {
 
   let builders = [OpBuilder<[{Builder *builder, OperationState &state,
                               Value *basePtr, ArrayRef<Value *> indices}]>];
+
+  let hasCanonicalizer = 1;
 }
 
 // -----
@@ -272,7 +275,7 @@ def SPV_ExecutionModeOp : SPV_Op<"ExecutionMode", [InModuleScope]> {
   let arguments = (ins
     SymbolRefAttr:$fn,
     SPV_ExecutionModeAttr:$execution_mode,
-    OptionalAttr<I32ArrayAttr>:$values
+    I32ArrayAttr:$values
   );
 
   let results = (outs);
@@ -280,6 +283,11 @@ def SPV_ExecutionModeOp : SPV_Op<"ExecutionMode", [InModuleScope]> {
   let verifier = [{ return success(); }];
 
   let autogenSerialization = 0;
+
+  let builders = [OpBuilder<[{Builder *builder, OperationState &state,
+                              FuncOp function,
+                              spirv::ExecutionMode executionMode,
+                              ArrayRef<int32_t> params}]>];
 }
 
 // -----
@@ -328,6 +336,10 @@ def SPV_LoadOp : SPV_Op<"Load", []> {
   let results = (outs
     SPV_Type:$value
   );
+
+  let builders = [OpBuilder<[{Builder *builder, OperationState &state,
+                  Value *basePtr, /*optional*/IntegerAttr memory_access,
+                  /*optional*/IntegerAttr alignment}]>];
 }
 
 // -----
@@ -339,7 +351,10 @@ def SPV_MemoryBarrierOp : SPV_Op<"MemoryBarrier", []> {
     Ensures that memory accesses issued before this instruction will be
     observed before memory accesses issued after this instruction. This
     control is ensured only for memory accesses issued by this invocation
-    and observed by another invocation executing within Memory scope.
+    and observed by another invocation executing within Memory scope. If the
+    Vulkan memory model is declared, this ordering only applies to memory
+    accesses that use the NonPrivatePointer memory operand or
+    NonPrivateTexel image operand.
 
     Semantics declares what kind of memory is being controlled and what kind
     of control to apply.
@@ -416,7 +431,54 @@ def SPV_StoreOp : SPV_Op<"Store", []> {
     OptionalAttr<I32Attr>:$alignment
   );
 
+  let builders = [
+    OpBuilder<"Builder *builder, OperationState &state, "
+      "Value *ptr, Value *value, ArrayRef<NamedAttribute> namedAttrs", [{
+      state.addOperands(ptr);
+      state.addOperands(value);
+      state.addAttributes(namedAttrs);
+    }]>
+  ];
+
   let results = (outs);
+}
+
+// -----
+
+def SPV_UndefOp : SPV_Op<"undef", []> {
+  let summary = "Make an intermediate object whose value is undefined.";
+
+  let description = [{
+    Result Type is the type of object to make.
+
+    Each consumption of Result <id> yields an arbitrary, possibly different
+    bit pattern or abstract value resulting in possibly different concrete,
+    abstract, or opaque values.
+
+    ### Custom assembly form
+
+    ``` {.ebnf}
+    undef-op ::= `spv.undef` `:` sprirv-type
+    ```
+
+    For example:
+
+    ```
+    %0 = spv.undef : f32
+    %1 = spv.undef : !spv.struct<!spv.array<4 x vector<4xi32>>>
+    ```
+  }];
+
+  let arguments = (ins);
+
+  let results = (outs
+    SPV_Type:$result
+  );
+
+  let verifier = [{ return success(); }];
+
+  let hasOpcode = 0;
+  let autogenSerialization = 0;
 }
 
 // -----

@@ -46,7 +46,7 @@ class SimpleStepStatsCollector : public StepStatsCollectorInterface {
     processing_time_ += delta;
   }
 
-  NodeExecStatsInterface* CreateNodeExecStats(const Node* node) override {
+  NodeExecStatsInterface* CreateNodeExecStats(const NodeDef* node) override {
     return new SimpleNodeExecStats(this);
   }
 
@@ -532,6 +532,8 @@ Status CapturedFunction::Instantiate(
   inst_opts.lib_def = metadata_->lib_def();
   inst_opts.create_kernels_eagerly = true;
   inst_opts.default_device_to_target = metadata_->use_default_device();
+  inst_opts.config_proto =
+      lib->config_proto() ? *lib->config_proto() : ConfigProto();
   if (!metadata_->use_inter_op_parallelism()) {
     inst_opts.executor_type = "SINGLE_THREADED_EXECUTOR";
   }
@@ -651,8 +653,9 @@ Status InstantiatedCapturedFunction::Run(IteratorContext* ctx,
   CancellationManager cancellation_manager;
   f_opts.cancellation_manager = &cancellation_manager;
   std::function<void()> deregister_fn;
-  TF_RETURN_IF_ERROR(ConnectCancellationManagers(
-      cancellation_manager_, &cancellation_manager, &deregister_fn));
+  TF_RETURN_IF_ERROR(RegisterCancellationCallback(
+      cancellation_manager_,
+      [cm = &cancellation_manager]() { cm->StartCancel(); }, &deregister_fn));
   auto cleanup = gtl::MakeCleanup(std::move(deregister_fn));
 
   OwnedArgsCallFrame frame(std::move(args), &captured_func_->captured_inputs(),
@@ -687,8 +690,9 @@ Status InstantiatedCapturedFunction::RunWithBorrowedArgs(
   CancellationManager cancellation_manager;
   f_opts.cancellation_manager = &cancellation_manager;
   std::function<void()> deregister_fn;
-  TF_RETURN_IF_ERROR(ConnectCancellationManagers(
-      cancellation_manager_, &cancellation_manager, &deregister_fn));
+  TF_RETURN_IF_ERROR(RegisterCancellationCallback(
+      cancellation_manager_,
+      [cm = &cancellation_manager]() { cm->StartCancel(); }, &deregister_fn));
   auto cleanup = gtl::MakeCleanup(std::move(deregister_fn));
 
   BorrowedArgsCallFrame frame(args, &captured_func_->captured_inputs(),
@@ -723,8 +727,9 @@ Status InstantiatedCapturedFunction::RunInstantiated(
   CancellationManager cancellation_manager;
   f_opts.cancellation_manager = &cancellation_manager;
   std::function<void()> deregister_fn;
-  TF_RETURN_IF_ERROR(ConnectCancellationManagers(
-      cancellation_manager_, &cancellation_manager, &deregister_fn));
+  TF_RETURN_IF_ERROR(RegisterCancellationCallback(
+      cancellation_manager_,
+      [cm = &cancellation_manager]() { cm->StartCancel(); }, &deregister_fn));
   auto cleanup = gtl::MakeCleanup(std::move(deregister_fn));
 
   BorrowedArgsCallFrame frame(args, &captured_func_->captured_inputs(),
@@ -774,8 +779,10 @@ void InstantiatedCapturedFunction::RunAsync(
   auto cancellation_manager = absl::make_unique<CancellationManager>();
   f_opts.cancellation_manager = cancellation_manager.get();
   std::function<void()> deregister_fn;
-  Status s = ConnectCancellationManagers(
-      ctx->cancellation_manager(), cancellation_manager.get(), &deregister_fn);
+  Status s = RegisterCancellationCallback(
+      cancellation_manager_,
+      [cm = cancellation_manager.get()]() { cm->StartCancel(); },
+      &deregister_fn);
   if (!s.ok()) {
     done(s);
     return;

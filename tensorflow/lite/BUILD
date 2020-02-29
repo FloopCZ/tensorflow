@@ -166,6 +166,7 @@ cc_library(
     ],
     copts = TFLITE_DEFAULT_COPTS,
     deps = [
+        ":simple_memory_arena",
         ":string",
         "//tensorflow/lite/c:c_api_internal",
         "//tensorflow/lite/core/api",
@@ -217,6 +218,7 @@ cc_library(
         "//tensorflow/lite/nnapi:nnapi_implementation",
         "//tensorflow/lite/schema:schema_fbs",
     ],
+    alwayslink = 1,
 )
 
 cc_library(
@@ -299,6 +301,7 @@ cc_test(
     ],
     deps = [
         ":simple_memory_arena",
+        "//tensorflow/core:tflite_portable_logging",
         "//tensorflow/lite/testing:util",
         "@com_google_googletest//:gtest",
     ],
@@ -447,7 +450,7 @@ tflite_cc_shared_object(
         ],
         "//tensorflow:windows": [],
         "//conditions:default": [
-            "-z defs",
+            "-Wl,-z,defs",
             "-Wl,--version-script,$(location //tensorflow/lite:tflite_version_script.lds)",
         ],
     }),

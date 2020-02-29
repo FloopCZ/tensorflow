@@ -19,14 +19,16 @@
 //
 //===----------------------------------------------------------------------===//
 
-#ifdef AFFINE_OPS
-#else
+#ifndef AFFINE_OPS
 #define AFFINE_OPS
 
-#ifdef OP_BASE
-#else
+#ifndef OP_BASE
 include "mlir/IR/OpBase.td"
 #endif // OP_BASE
+
+#ifndef MLIR_LOOPLIKEINTERFACE
+include "mlir/Transforms/LoopLikeInterface.td"
+#endif
 
 include "mlir/Dialect/AffineOps/AffineOpsBase.td"
 
@@ -53,7 +55,9 @@ class Affine_Op<string mnemonic, list<OpTrait> traits = []> :
 def ImplicitAffineTerminator
     : SingleBlockImplicitTerminator<"AffineTerminatorOp">;
 
-def AffineForOp : Affine_Op<"for", [ImplicitAffineTerminator]> {
+def AffineForOp : Affine_Op<"for",
+    [ImplicitAffineTerminator,
+     DeclareOpInterfaceMethods<LoopLikeOpInterface>]> {
   let summary = "for operation";
   let description = [{
     The "affine.for" operation represents an affine loop nest, defining an SSA

@@ -111,10 +111,6 @@ mirrored_strategy_with_two_gpus = combinations.NamedDistribution(
     "Mirrored2GPUs",
     lambda: mirrored_lib.MirroredStrategy(["/gpu:0", "/gpu:1"]),
     required_gpus=2)
-mirrored_strategy_with_two_gpus_remote = combinations.NamedDistribution(
-    "Mirrored2GPUsRemote",
-    lambda: mirrored_lib.MirroredStrategy(["/job:foo/gpu:0", "/job:foo/gpu:1"]),
-    required_gpus=2)
 # Should call set_virtual_cpus_to_at_least(3) in your test's setUp methods.
 mirrored_strategy_with_cpu_1_and_2 = combinations.NamedDistribution(
     "Mirrored2CPU", lambda: mirrored_lib.MirroredStrategy(["/cpu:1", "/cpu:2"]))
@@ -177,12 +173,13 @@ def set_virtual_cpus_to_at_least(num_virtual_cpus):
   physical_devices = config.list_physical_devices("CPU")
   if not physical_devices:
     raise RuntimeError("No CPUs found")
-  configs = config.get_virtual_device_configuration(physical_devices[0])
+  configs = config.get_logical_device_configuration(physical_devices[0])
   if configs is None:
-    virtual_devices = [context.VirtualDeviceConfiguration()
-                       for _ in range(num_virtual_cpus)]
-    config.set_virtual_device_configuration(
-        physical_devices[0], virtual_devices)
+    logical_devices = [
+        context.LogicalDeviceConfiguration() for _ in range(num_virtual_cpus)
+    ]
+    config.set_logical_device_configuration(physical_devices[0],
+                                            logical_devices)
   else:
     if len(configs) < num_virtual_cpus:
       raise RuntimeError("Already configured with %d < %d virtual CPUs" %

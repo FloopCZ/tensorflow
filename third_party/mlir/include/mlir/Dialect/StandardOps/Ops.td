@@ -19,14 +19,14 @@
 //
 //===----------------------------------------------------------------------===//
 
-#ifdef STANDARD_OPS
-#else
+#ifndef STANDARD_OPS
 #define STANDARD_OPS
 
-#ifdef OP_BASE
-#else
+#ifndef OP_BASE
 include "mlir/IR/OpBase.td"
 #endif // OP_BASE
+
+include "mlir/Analysis/CallInterfaces.td"
 
 def Std_Dialect : Dialect {
   let name = "std";
@@ -70,6 +70,28 @@ class CastOp<string mnemonic, list<OpTrait> traits = []> :
   let hasFolder = 1;
 }
 
+// Base class for unary ops. Requires single operand and result. Individual
+// classes will have `operand` accessor.
+class UnaryOp<string mnemonic, list<OpTrait> traits = []> :
+    Op<Std_Dialect, mnemonic, !listconcat(traits, [NoSideEffect])> {
+  let results = (outs AnyType);
+  let printer = [{
+    return printStandardUnaryOp(this->getOperation(), p);
+  }];
+}
+
+class UnaryOpSameOperandAndResultType<string mnemonic,
+                                      list<OpTrait> traits = []> :
+    UnaryOp<mnemonic, !listconcat(traits, [SameOperandsAndResultType])> {
+  let parser = [{
+    return impl::parseOneResultSameOperandTypeOp(parser, result);
+  }];
+}
+
+class FloatUnaryOp<string mnemonic, list<OpTrait> traits = []> :
+    UnaryOpSameOperandAndResultType<mnemonic, traits>,
+    Arguments<(ins FloatLike:$operand)>;
+
 // Base class for standard arithmetic operations.  Requires operands and
 // results to be of the same type, but does not constrain them to specific
 // types.  Individual classes will have `lhs` and `rhs` accessor to operands.
@@ -80,7 +102,7 @@ class ArithmeticOp<string mnemonic, list<OpTrait> traits = []> :
   let results = (outs AnyType);
 
   let parser = [{
-    return impl::parseBinaryOp(parser, result);
+    return impl::parseOneResultSameOperandTypeOp(parser, result);
   }];
 
   let printer = [{
@@ -92,7 +114,7 @@ class ArithmeticOp<string mnemonic, list<OpTrait> traits = []> :
 // tensors thereof.  This operation takes two operands and returns one result,
 // each of these is required to be of the same type.  This type may be an
 // integer scalar type, a vector whose element type is an integer type, or an
-// integer tensor.  The custom assembly form of the operaton is as follows
+// integer tensor.  The custom assembly form of the operation is as follows
 //
 //     <op>i %0, %1 : i32
 class IntArithmeticOp<string mnemonic, list<OpTrait> traits = []> :
@@ -210,9 +232,11 @@ def BranchOp : Std_Op<"br", [Terminator]> {
     /// Erase the operand at 'index' from the operand list.
     void eraseOperand(unsigned index);
   }];
+
+  let hasCanonicalizer = 1;
 }
 
-def CallOp : Std_Op<"call"> {
+def CallOp : Std_Op<"call", [CallOpInterface]> {
   let summary = "call operation";
   let description = [{
     The "call" operation represents a direct call to a function.  The operands
@@ -232,11 +256,16 @@ def CallOp : Std_Op<"call"> {
       result.addAttribute("callee", builder->getSymbolRefAttr(callee));
       result.addTypes(callee.getType().getResults());
   }]>, OpBuilder<
-    "Builder *builder, OperationState &result, StringRef callee,"
+    "Builder *builder, OperationState &result, SymbolRefAttr callee,"
     "ArrayRef<Type> results, ArrayRef<Value *> operands = {}", [{
       result.addOperands(operands);
-      result.addAttribute("callee", builder->getSymbolRefAttr(callee));
+      result.addAttribute("callee", callee);
       result.addTypes(results);
+  }]>, OpBuilder<
+    "Builder *builder, OperationState &result, StringRef callee,"
+    "ArrayRef<Type> results, ArrayRef<Value *> operands = {}", [{
+      build(builder, result, builder->getSymbolRefAttr(callee), results,
+            operands);
   }]>];
 
   let extraClassDeclaration = [{
@@ -250,10 +279,15 @@ def CallOp : Std_Op<"call"> {
 
     operand_iterator arg_operand_begin() { return operand_begin(); }
     operand_iterator arg_operand_end() { return operand_end(); }
+
+    /// Return the callee of this operation.
+    CallInterfaceCallable getCallableForCallee() {
+      return getAttrOfType<SymbolRefAttr>("callee");
+    }
   }];
 }
 
-def CallIndirectOp : Std_Op<"call_indirect"> {
+def CallIndirectOp : Std_Op<"call_indirect", [CallOpInterface]> {
   let summary = "indirect call operation";
   let description = [{
     The "call_indirect" operation represents an indirect call to a value of
@@ -285,12 +319,16 @@ def CallIndirectOp : Std_Op<"call_indirect"> {
 
     operand_iterator arg_operand_begin() { return ++operand_begin(); }
     operand_iterator arg_operand_end() { return operand_end(); }
+
+    /// Return the callee of this operation.
+    CallInterfaceCallable getCallableForCallee() { return getCallee(); }
   }];
 
   let hasCanonicalizer = 1;
 }
 
-def CmpIOp : Std_Op<"cmpi", [NoSideEffect, SameTypeOperands, SameOperandsAndResultShape]> {
+def CmpIOp : Std_Op<"cmpi",
+    [NoSideEffect, SameTypeOperands, SameOperandsAndResultShape]> {
   let summary = "integer comparison operation";
   let description = [{
     The "cmpi" operation compares its two operands according to the integer
@@ -335,7 +373,8 @@ def CmpIOp : Std_Op<"cmpi", [NoSideEffect, SameTypeOperands, SameOperandsAndResu
   let hasFolder = 1;
 }
 
-def CmpFOp : Std_Op<"cmpf", [NoSideEffect, SameTypeOperands, SameOperandsAndResultShape]> {
+def CmpFOp : Std_Op<"cmpf",
+    [NoSideEffect, SameTypeOperands, SameOperandsAndResultShape]> {
   let summary = "floating-point comparison operation";
   let description = [{
     The "cmpf" operation compares its two operands according to the float
@@ -421,12 +460,12 @@ def CondBranchOp : Std_Op<"cond_br", [Terminator]> {
 
     /// Return the destination if the condition is true.
     Block *getTrueDest() {
-      return getOperation()->getSuccessor(trueIndex);
+      return getSuccessor(trueIndex);
     }
 
     /// Return the destination if the condition is false.
     Block *getFalseDest() {
-      return getOperation()->getSuccessor(falseIndex);
+      return getSuccessor(falseIndex);
     }
 
     // Accessors for operands to the 'true' destination.
@@ -451,7 +490,7 @@ def CondBranchOp : Std_Op<"cond_br", [Terminator]> {
     }
 
     unsigned getNumTrueOperands()  {
-      return getOperation()->getNumSuccessorOperands(trueIndex);
+      return getNumSuccessorOperands(trueIndex);
     }
 
     /// Erase the operand at 'index' from the true operand list.
@@ -478,7 +517,7 @@ def CondBranchOp : Std_Op<"cond_br", [Terminator]> {
     }
 
     unsigned getNumFalseOperands() {
-      return getOperation()->getNumSuccessorOperands(falseIndex);
+      return getNumSuccessorOperands(falseIndex);
     }
 
     /// Erase the operand at 'index' from the false operand list.
@@ -585,6 +624,10 @@ def DivIUOp : IntArithmeticOp<"diviu"> {
   let hasFolder = 1;
 }
 
+def ExpOp : FloatUnaryOp<"exp"> {
+  let summary = "base-e exponential of the specified value";
+}
+
 def ExtractElementOp : Std_Op<"extract_element", [NoSideEffect]> {
   let summary = "element extract operation";
   let description = [{
@@ -614,8 +657,7 @@ def ExtractElementOp : Std_Op<"extract_element", [NoSideEffect]> {
     Value *getAggregate() { return getOperand(0); }
 
     operand_range getIndices() {
-      return {getOperation()->operand_begin() + 1,
-              getOperation()->operand_end()};
+      return {operand_begin() + 1, operand_end()};
     }
   }];
 
@@ -646,6 +688,41 @@ def SIToFPOp : CastOp<"sitofp">, Arguments<(ins AnyType:$in)> {
     floating-point value. If the value cannot be exactly represented, it is
     rounded using the default rounding mode. Only scalars are currently
     supported.
+  }];
+
+  let extraClassDeclaration = [{
+    /// Return true if `a` and `b` are valid operand and result pairs for
+    /// the operation.
+    static bool areCastCompatible(Type a, Type b);
+  }];
+
+  let hasFolder = 0;
+}
+
+def FPExtOp : CastOp<"fpext">, Arguments<(ins AnyType:$in)> {
+  let summary = "cast from floating-point to wider floating-point";
+  let description = [{
+    Cast a floating-point value to a larger floating-point-typed value.
+    The destination type must to be strictly wider than the source type.
+    Only scalars are currently supported.
+  }];
+
+  let extraClassDeclaration = [{
+    /// Return true if `a` and `b` are valid operand and result pairs for
+    /// the operation.
+    static bool areCastCompatible(Type a, Type b);
+  }];
+
+  let hasFolder = 0;
+}
+
+def FPTruncOp : CastOp<"fptrunc">, Arguments<(ins AnyType:$in)> {
+  let summary = "cast from floating-point to narrower floating-point";
+  let description = [{
+    Truncate a floating-point value to a smaller floating-point-typed value.
+    The destination type must be strictly narrower than the source type.
+    If the value cannot be exactly represented, it is rounded using the default
+    rounding mode. Only scalars are currently supported.
   }];
 
   let extraClassDeclaration = [{
@@ -688,9 +765,7 @@ def LoadOp : Std_Op<"load"> {
       return getMemRef()->getType().cast<MemRefType>();
     }
 
-    operand_range getIndices() {
-      return {getOperation()->operand_begin() + 1, getOperation()->operand_end()};
-    }
+    operand_range getIndices() { return {operand_begin() + 1, operand_end()}; }
   }];
 
   let hasCanonicalizer = 1;
@@ -729,7 +804,7 @@ def MemRefCastOp : CastOp<"memref_cast"> {
 }
 
 def MulFOp : FloatArithmeticOp<"mulf"> {
-  let summary = "foating point multiplication operation";
+  let summary = "floating point multiplication operation";
   let hasFolder = 1;
 }
 
@@ -833,7 +908,8 @@ def SelectOp : Std_Op<"select", [NoSideEffect, SameOperandsAndResultShape]> {
   let hasFolder = 1;
 }
 
-def SignExtendIOp : Std_Op<"sexti", [NoSideEffect, SameOperandsAndResultShape]> {
+def SignExtendIOp : Std_Op<"sexti",
+    [NoSideEffect, SameOperandsAndResultShape]> {
   let summary = "integer sign extension operation";
   let description = [{
     The integer sign extension operation takes an integer input of
@@ -871,6 +947,32 @@ def ShlISOp : IntArithmeticOp<"shlis"> {
   let summary = "signed integer shift left";
 }
 
+def SplatOp : Std_Op<"splat", [NoSideEffect]> {
+  let summary = "splat or broadcast operation";
+  let description = [{
+    The "splat" op reads a value of integer or float type and broadcasts it into
+    a vector or a tensor. The output of splat is thus a new value of either
+    vector or tensor type with elemental type being its operand's type.
+    When the result is a tensor, it has to be statically shaped.
+
+      %1 = splat %0 : vector<8xi32>
+      %2 = splat %0 : tensor<4x8xi32>
+
+    // TODO: handle broadcast to dynamically shaped tensors.
+  }];
+
+  let arguments = (ins AnyTypeOf<[AnyInteger, AnyFloat],
+                                 "integer or float type">:$input);
+  let results = (outs AnyTypeOf<[AnyVector, AnyStaticShapeTensor]>:$aggregate);
+
+  let builders =
+      [OpBuilder<"Builder *builder, OperationState &result, Value *element, "
+                  "Type aggregateType",
+                  [{ build(builder, result, aggregateType, element); }]>];
+
+  let hasFolder = 1;
+}
+
 def SubFOp : FloatArithmeticOp<"subf"> {
   let summary = "floating point subtraction operation";
   let hasFolder = 1;
@@ -894,7 +996,8 @@ def StoreOp : Std_Op<"store"> {
       store %v, %A[%i, %j] : memref<4x128xf32, (d0, d1) -> (d0, d1), 0>
   }];
 
-  let arguments = (ins AnyType:$value, AnyMemRef:$memref, Variadic<Index>:$indices);
+  let arguments = (ins AnyType:$value, AnyMemRef:$memref,
+                   Variadic<Index>:$indices);
 
   let builders = [OpBuilder<
     "Builder *, OperationState &result, Value *valueToStore, Value *memref", [{
@@ -912,7 +1015,7 @@ def StoreOp : Std_Op<"store"> {
       }
 
       operand_range getIndices() {
-        return {getOperation()->operand_begin() + 2, getOperation()->operand_end()};
+        return {operand_begin() + 2, operand_end()};
       }
   }];
 
@@ -965,8 +1068,8 @@ def TensorLoadOp : Std_Op<"tensor_load",
   let builders = [OpBuilder<
     "Builder *builder, OperationState &result, Value *memref", [{
       auto memrefType = memref->getType().cast<MemRefType>();
-      auto resultType = builder->getTensorType(memrefType.getShape(),
-          memrefType.getElementType());
+      auto resultType = RankedTensorType::get(memrefType.getShape(),
+                                              memrefType.getElementType());
       result.addOperands(memref);
       result.addTypes(resultType);
   }]>];
@@ -1004,7 +1107,7 @@ def TruncateIOp : Std_Op<"trunci", [NoSideEffect, SameOperandsAndResultShape]> {
     The integer truncation operation takes an integer input of
     width M and an integer destination type of width N. The destination
     bit-width must be smaller than the input bit-width (N < M).
-    The top-most (N - M) bits of the input are discareded.
+    The top-most (N - M) bits of the input are discarded.
 
       %1 = constant 21 : i5           // %1 is 0b10101
       %2 = trunci %1 : i5 to i4       // %2 is 0b0101
@@ -1028,6 +1131,68 @@ def TruncateIOp : Std_Op<"trunci", [NoSideEffect, SameOperandsAndResultShape]> {
   let printer = [{
     return printStandardCastOp(this->getOperation(), p);
   }];
+}
+
+def ViewOp : Std_Op<"view"> {
+  let summary = "memref view operation";
+  let description = [{
+    The "view" operation converts a 1-D memref with i8 element type,
+    to an N-D memref with arbitrary element type. In addition, the ViewOp
+    supports the following arguments:
+    *) A single dynamic offset operand can be specified which represents a
+       a dynamic offset within the base 1-D memref at which to create the
+       resulting memref view.
+    *) A dynamic size operand must be specified for each dynamic dimension
+       in the resulting view memref type.
+
+    // Allocate a flat 1D/i8 memref.
+    %0 = alloc() : memref<2048xi8>
+
+    // ViewOp with static offset and sizes.
+    %1 = view %0[][] : memref<2048xi8> to memref<64x4xf32>
+
+    // ViewOp with dynamic offset and one dynamic size.
+    %2 = view %0[%offset_1024][%size0]
+      : memref<2048xi8> to memref<?x4xf32, (d0, d1)[s0] -> (d0 * 4 + d1 + s0)
+
+    // ViewOp creating 3D shape where two of the dim sizes are dynamic.
+    // *) The dynamic offset specified in the ViewOp is applied to the
+    //    base 1-D memref, and is represented by the symbol 's0' in the
+    //    layout map of the ViewOp result memref type.
+    // *) The dynamic size for the second dimension induces a dynamic
+    //    stride for the first dimension, which is represented by the
+    //    symbol 's1' in the layout map of the ViewOp result memref type.
+    //    Note that this dynamic stride will be computed from the view
+    //    shape and dynamic sizes.
+    %3 = view %0[%offset_1024][%size0, %size1]
+      : memref<2048xi8> to memref<?x?x4xf32,
+        (d0, d1, d2)[s0, s1] -> (d0 * s1 + d1 * 4 + d2 + s0)
+  }];
+
+  let arguments = (ins MemRefRankOf<[I8], [1]>:$source,
+                       Variadic<Index>:$operands);
+  let results = (outs AnyMemRef);
+
+  let extraClassDeclaration = [{
+    /// The result of a memref_shape_cast is always a memref.
+    MemRefType getType() { return getResult()->getType().cast<MemRefType>(); }
+
+    /// Returns the dynamic offset for this shape cast operation if specified.
+    /// Returns nullptr if no dynamic offset was specified.
+    Value *getDynamicOffset();
+
+    /// Returns the starting operand list position of the dynamic size operands.
+    unsigned getDynamicSizesOperandStart() {
+      return getDynamicOffset() == nullptr ? 1 : 2;
+    }
+
+    /// Returns the dynamic sizes for this shape cast operation.
+    operand_range getDynamicSizes() {
+      return {operand_begin() + getDynamicSizesOperandStart(), operand_end()};
+    }
+  }];
+
+  let hasCanonicalizer = 1;
 }
 
 def XOrOp : IntArithmeticOp<"xor", [Commutative]> {

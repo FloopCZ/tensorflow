@@ -17,6 +17,7 @@ limitations under the License.
 #include <algorithm>
 #include <cstdint>
 
+#include "tensorflow/lite/kernels/cpu_backend_context.h"
 #include "tensorflow/lite/kernels/internal/compatibility.h"
 
 #ifdef GEMMLOWP_PROFILING
@@ -1040,29 +1041,32 @@ inline void LstmStepQuantized(
     int8_t* activation_ptr, int32_t activation_zp, int16_t* cell_ptr,
     int8_t* output_ptr, int16_t* scratch_0_ptr, int16_t* scratch_1_ptr,
     int16_t* scratch_2_ptr, int16_t* scratch_3_ptr, int8_t* scratch_4_ptr,
-    int32_t* scratch_5_ptr) {
+    int32_t* scratch_5_ptr, CpuBackendContext* context) {
+  // Get hyper parameters.
+  const bool use_cifg = (input_to_input_weight_ptr == nullptr);
+
+  // Check for nullptrs.
   TFLITE_DCHECK(input_to_forget_effective_bias);
   TFLITE_DCHECK(recurrent_to_forget_effective_bias);
   TFLITE_DCHECK(input_to_cell_effective_bias);
   TFLITE_DCHECK(recurrent_to_cell_effective_bias);
   TFLITE_DCHECK(input_to_output_effective_bias);
   TFLITE_DCHECK(recurrent_to_output_effective_bias);
-  TFLITE_DCHECK(input_to_input_effective_bias);
-  TFLITE_DCHECK(recurrent_to_input_effective_bias);
+  if (!use_cifg) {
+    TFLITE_DCHECK(input_to_input_effective_bias);
+    TFLITE_DCHECK(recurrent_to_input_effective_bias);
+  }
   TFLITE_DCHECK(projection_effective_bias);
 
-  const bool use_cifg = (input_to_input_weight_ptr == nullptr);
-
   // TODO(renjieliu): Handle optional arguments processing here:
-  // case cifg: input_to_input_weights should be nullptr
-  //            recurrent_to_input_weight should be nullptr
-  //            input_bias should be nullptr
   // case not peephole: cell_to_forget_weight should be nullptr
   //                    cell_to_output_weight should be nullptr
   //                    cifg: cell_to_input_weight should be nullptr
 
   // Set scratch to 0.
-  memset(scratch_0_ptr, 0, n_batch * n_cell * sizeof(int16_t));
+  if (!use_cifg) {
+    memset(scratch_0_ptr, 0, n_batch * n_cell * sizeof(int16_t));
+  }
   memset(scratch_1_ptr, 0, n_batch * n_cell * sizeof(int16_t));
   memset(scratch_2_ptr, 0, n_batch * n_cell * sizeof(int16_t));
   memset(scratch_3_ptr, 0, n_batch * n_cell * sizeof(int16_t));
@@ -1071,13 +1075,13 @@ inline void LstmStepQuantized(
   tensor_utils::MatrixBatchVectorMultiplyAccumulate(
       input_ptr, input_to_forget_effective_bias, input_to_forget_weight_ptr,
       effective_input_to_forget_scale_a, effective_input_to_forget_scale_b,
-      n_batch, n_input, n_cell, 0, scratch_5_ptr, scratch_1_ptr);
+      n_batch, n_input, n_cell, 0, scratch_5_ptr, scratch_1_ptr, context);
 
   tensor_utils::MatrixBatchVectorMultiplyAccumulate(
       activation_ptr, recurrent_to_forget_effective_bias,
       recurrent_to_forget_weight_ptr, effective_recurrent_to_forget_scale_a,
       effective_recurrent_to_forget_scale_b, n_batch, n_output, n_cell, 0,
-      scratch_5_ptr, scratch_1_ptr);
+      scratch_5_ptr, scratch_1_ptr, context);
 
   if (layer_norm_forget_weight_ptr != nullptr) {
     tensor_utils::ApplyLayerNorm(scratch_1_ptr, layer_norm_forget_weight_ptr,
@@ -1092,13 +1096,13 @@ inline void LstmStepQuantized(
   tensor_utils::MatrixBatchVectorMultiplyAccumulate(
       input_ptr, input_to_cell_effective_bias, input_to_cell_weight_ptr,
       effective_input_to_cell_scale_a, effective_input_to_cell_scale_b, n_batch,
-      n_input, n_cell, 0, scratch_5_ptr, scratch_2_ptr);
+      n_input, n_cell, 0, scratch_5_ptr, scratch_2_ptr, context);
 
   tensor_utils::MatrixBatchVectorMultiplyAccumulate(
       activation_ptr, recurrent_to_cell_effective_bias,
       recurrent_to_cell_weight_ptr, effective_recurrent_to_cell_scale_a,
       effective_recurrent_to_cell_scale_b, n_batch, n_output, n_cell, 0,
-      scratch_5_ptr, scratch_2_ptr);
+      scratch_5_ptr, scratch_2_ptr, context);
 
   if (layer_norm_cell_weight_ptr != nullptr) {
     tensor_utils::ApplyLayerNorm(scratch_2_ptr, layer_norm_cell_weight_ptr,
@@ -1113,13 +1117,13 @@ inline void LstmStepQuantized(
   tensor_utils::MatrixBatchVectorMultiplyAccumulate(
       input_ptr, input_to_output_effective_bias, input_to_output_weight_ptr,
       effective_input_to_output_scale_a, effective_input_to_output_scale_b,
-      n_batch, n_input, n_cell, 0, scratch_5_ptr, scratch_3_ptr);
+      n_batch, n_input, n_cell, 0, scratch_5_ptr, scratch_3_ptr, context);
 
   tensor_utils::MatrixBatchVectorMultiplyAccumulate(
       activation_ptr, recurrent_to_output_effective_bias,
       recurrent_to_output_weight_ptr, effective_recurrent_to_output_scale_a,
       effective_recurrent_to_output_scale_b, n_batch, n_output, n_cell, 0,
-      scratch_5_ptr, scratch_3_ptr);
+      scratch_5_ptr, scratch_3_ptr, context);
 
   if (layer_norm_output_weight_ptr != nullptr) {
     tensor_utils::ApplyLayerNorm(scratch_3_ptr, layer_norm_output_weight_ptr,
@@ -1137,13 +1141,13 @@ inline void LstmStepQuantized(
     tensor_utils::MatrixBatchVectorMultiplyAccumulate(
         input_ptr, input_to_input_effective_bias, input_to_input_weight_ptr,
         effective_input_to_input_scale_a, effective_input_to_input_scale_b,
-        n_batch, n_input, n_cell, 0, scratch_5_ptr, scratch_0_ptr);
+        n_batch, n_input, n_cell, 0, scratch_5_ptr, scratch_0_ptr, context);
 
     tensor_utils::MatrixBatchVectorMultiplyAccumulate(
         activation_ptr, recurrent_to_input_effective_bias,
         recurrent_to_input_weight_ptr, effective_recurrent_to_input_scale_a,
         effective_recurrent_to_input_scale_b, n_batch, n_output, n_cell, 0,
-        scratch_5_ptr, scratch_0_ptr);
+        scratch_5_ptr, scratch_0_ptr, context);
 
     if (layer_norm_input_weight_ptr != nullptr) {
       tensor_utils::ApplyLayerNorm(scratch_0_ptr, layer_norm_input_weight_ptr,
@@ -1186,7 +1190,7 @@ inline void LstmStepQuantized(
     tensor_utils::MatrixBatchVectorMultiplyAccumulate(
         scratch_4_ptr, projection_effective_bias, proj_weight_ptr,
         effective_proj_scale_a, effective_proj_scale_b, n_batch, n_cell,
-        n_output, activation_zp, scratch_5_ptr, output_ptr);
+        n_output, activation_zp, scratch_5_ptr, output_ptr, context);
   }
 
   if (quantized_proj_clip > 0) {
@@ -1767,7 +1771,7 @@ TfLiteStatus EvalQuantized(
     TfLiteTensor* activation_state, TfLiteTensor* cell_state,
     TfLiteTensor* output, TfLiteTensor* scratch0, TfLiteTensor* scratch1,
     TfLiteTensor* scratch2, TfLiteTensor* scratch3, TfLiteTensor* scratch4,
-    TfLiteTensor* scratch5) {
+    TfLiteTensor* scratch5, CpuBackendContext* context) {
   TF_LITE_ASSERT(input->dims->size >= 2 && input->dims->size <= 3);
   const int n_input = input->dims->data[input->dims->size - 1];
   int max_time, n_batch;
@@ -1912,7 +1916,7 @@ TfLiteStatus EvalQuantized(
         activation_zp, cell_ptr, output_ptr, GetTensorData<int16_t>(scratch0),
         GetTensorData<int16_t>(scratch1), GetTensorData<int16_t>(scratch2),
         GetTensorData<int16_t>(scratch3), GetTensorData<int8_t>(scratch4),
-        GetTensorData<int32_t>(scratch5));
+        GetTensorData<int32_t>(scratch5), context);
   }
 
   return kTfLiteOk;

@@ -32,12 +32,10 @@ cuda_py_tests(
         "//tensorflow/python/ops/signal",
     ],
     tags = ["no_rocm"],
-    xla_enable_strict_auto_jit = True,
 )
 
 cuda_py_tests(
     name = "fft_ops_test",
-    # TODO(rjryan): Parameterize the test to reduce the time it takes.
     size = "medium",
     srcs = ["fft_ops_test.py"],
     additional_deps = [
@@ -52,7 +50,6 @@ cuda_py_tests(
         "no_rocm",
         "optonly",
     ],
-    xla_enable_strict_auto_jit = True,
 )
 
 cuda_py_tests(
@@ -64,7 +61,6 @@ cuda_py_tests(
         "//tensorflow/python:client_testlib",
         "//tensorflow/python/ops/signal",
     ],
-    xla_enable_strict_auto_jit = True,
 )
 
 cuda_py_tests(
@@ -80,7 +76,6 @@ cuda_py_tests(
         "//tensorflow/python/ops/signal",
     ],
     tags = ["no_rocm"],
-    xla_enable_strict_auto_jit = True,
 )
 
 cuda_py_tests(
@@ -99,7 +94,6 @@ cuda_py_tests(
         "//tensorflow/python/ops/signal",
         "//tensorflow/python:platform_test",
     ],
-    xla_enable_strict_auto_jit = True,
 )
 
 cuda_py_tests(
@@ -117,7 +111,6 @@ cuda_py_tests(
         "//tensorflow/python/ops/signal",
         "//tensorflow/python:platform_test",
     ],
-    xla_enable_strict_auto_jit = True,
 )
 
 cuda_py_tests(
@@ -142,7 +135,6 @@ cuda_py_tests(
         "no_rocm",
         "nomac",
     ],
-    xla_enable_strict_auto_jit = True,
 )
 
 cuda_py_tests(
@@ -158,5 +150,8 @@ cuda_py_tests(
         "//tensorflow/python/ops/signal",
         "//tensorflow/python:platform_test",
     ],
-    xla_enable_strict_auto_jit = True,
+    shard_count = 4,
+    tags = [
+        "no_windows_gpu",
+    ],
 )

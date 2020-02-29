@@ -11,6 +11,14 @@ package(
     licenses = ["notice"],  # Apache 2.0
 )
 
+config_setting(
+    name = "optimized",
+    values = {
+        "compilation_mode": "opt",
+    },
+    visibility = ["//visibility:public"],
+)
+
 cc_library(
     name = "platform",
     hdrs = ["platform.h"],
@@ -21,7 +29,16 @@ cc_library(
     name = "check_macros",
     hdrs = ["check_macros.h"],
     copts = ruy_copts_base(),
-    deps = ["//tensorflow/lite/kernels/internal:compatibility"],
+)
+
+cc_test(
+    name = "check_macros_test",
+    srcs = ["check_macros_test.cc"],
+    copts = ruy_copts_base(),
+    deps = [
+        ":check_macros",
+        "@com_google_googletest//:gtest",
+    ],
 )
 
 cc_library(
@@ -86,11 +103,40 @@ cc_library(
     ],
 )
 
+cc_library(
+    name = "prepacked_cache",
+    srcs = [
+        "prepacked_cache.cc",
+    ],
+    hdrs = [
+        "prepacked_cache.h",
+    ],
+    copts = ruy_copts_base(),
+    deps = [
+        ":allocator",
+        ":matrix",
+        ":opt_set",
+        ":platform",
+        ":time",
+    ],
+)
+
 cc_test(
     name = "tune_test",
     srcs = ["tune_test.cc"],
     deps = [
         ":tune",
+        "@com_google_googletest//:gtest",
+    ],
+)
+
+cc_test(
+    name = "prepacked_cache_test",
+    srcs = ["prepacked_cache_test.cc"],
+    deps = [
+        ":prepacked_cache",
+        ":ruy",
+        ":time",
         "@com_google_googletest//:gtest",
     ],
 )
@@ -560,6 +606,7 @@ cc_library(
         ":have_built_path_for",
         ":path",
         ":platform",
+        ":prepacked_cache",
         ":thread_pool",
         ":trace",
         ":tune",
@@ -636,6 +683,7 @@ cc_library(
         ":opt_set",
         ":pack",
         ":path",
+        ":prepacked_cache",
         ":side_pair",
         ":size_util",
         ":spec",

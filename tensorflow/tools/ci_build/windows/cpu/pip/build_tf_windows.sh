@@ -120,6 +120,10 @@ if [[ "$TF_NIGHTLY" == 1 ]]; then
   else
     EXTRA_PIP_FLAGS="--project_name ${PROJECT_NAME} --nightly_flag"
   fi
+else
+  if [[ -v PROJECT_NAME  ]]; then
+    EXTRA_PIP_FLAGS="--project_name ${PROJECT_NAME}"
+  fi
 fi
 
 # Enable short object file path to avoid long path issue on Windows.
@@ -154,7 +158,7 @@ if [[ "$TF_NIGHTLY" == 1 ]]; then
 fi
 
 # Running python tests on Windows needs pip package installed
-PIP_NAME=$(ls ${PY_TEST_DIR}/tensorflow-*.whl)
+PIP_NAME=$(ls ${PY_TEST_DIR}/tensorflow*.whl)
 reinstall_tensorflow_pip ${PIP_NAME}
 
 # NUMBER_OF_PROCESSORS is predefined on Windows
@@ -168,7 +172,7 @@ N_JOBS="${NUMBER_OF_PROCESSORS}"
 bazel test --announce_rc --config=opt -k --test_output=errors \
   ${EXTRA_TEST_FLAGS} \
   --define=no_tensorflow_py_deps=true --test_lang_filters=py \
-  --test_tag_filters=-no_pip,-no_windows,-no_oss,-gpu,-tpu \
+  --test_tag_filters=-no_pip,-no_windows,-no_oss,-gpu,-tpu,-v1only \
   --build_tag_filters=-no_pip,-no_windows,-no_oss,-gpu,-tpu --build_tests_only \
   --test_size_filters=small,medium \
   --jobs="${N_JOBS}" --test_timeout="300,450,1200,3600" \
