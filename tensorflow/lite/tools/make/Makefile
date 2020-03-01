@@ -102,8 +102,36 @@ $(wildcard tensorflow/lite/*.c) \
 $(wildcard tensorflow/lite/c/*.c) \
 $(wildcard tensorflow/lite/core/*.cc) \
 $(wildcard tensorflow/lite/core/api/*.cc) \
-$(wildcard tensorflow/lite/experimental/resource_variable/*.cc) \
-$(wildcard tensorflow/lite/experimental/ruy/*.cc)
+$(wildcard tensorflow/lite/experimental/resource/*.cc) \
+$(wildcard tensorflow/lite/experimental/ruy/allocator.cc) \
+$(wildcard tensorflow/lite/experimental/ruy/benchmark.cc) \
+$(wildcard tensorflow/lite/experimental/ruy/blocking_counter.cc) \
+$(wildcard tensorflow/lite/experimental/ruy/block_map.cc) \
+$(wildcard tensorflow/lite/experimental/ruy/context.cc) \
+$(wildcard tensorflow/lite/experimental/ruy/detect_arm.cc) \
+$(wildcard tensorflow/lite/experimental/ruy/detect_x86.cc) \
+$(wildcard tensorflow/lite/experimental/ruy/have_built_path_for_avx2.cc) \
+$(wildcard tensorflow/lite/experimental/ruy/have_built_path_for_avx512.cc) \
+$(wildcard tensorflow/lite/experimental/ruy/have_built_path_for_avxvnni.cc) \
+$(wildcard tensorflow/lite/experimental/ruy/have_built_path_for_sse42.cc) \
+$(wildcard tensorflow/lite/experimental/ruy/kernel_arm32.cc) \
+$(wildcard tensorflow/lite/experimental/ruy/kernel_arm64.cc) \
+$(wildcard tensorflow/lite/experimental/ruy/kernel_avx2.cc) \
+$(wildcard tensorflow/lite/experimental/ruy/kernel_avx512.cc) \
+$(wildcard tensorflow/lite/experimental/ruy/kernel_avxvnni.cc) \
+$(wildcard tensorflow/lite/experimental/ruy/kernel_sse42.cc) \
+$(wildcard tensorflow/lite/experimental/ruy/pack_arm.cc) \
+$(wildcard tensorflow/lite/experimental/ruy/pack_avx2.cc) \
+$(wildcard tensorflow/lite/experimental/ruy/pack_avx512.cc) \
+$(wildcard tensorflow/lite/experimental/ruy/pack_avxvnni.cc) \
+$(wildcard tensorflow/lite/experimental/ruy/pack_sse42.cc) \
+$(wildcard tensorflow/lite/experimental/ruy/pmu.cc) \
+$(wildcard tensorflow/lite/experimental/ruy/prepacked_cache.cc) \
+$(wildcard tensorflow/lite/experimental/ruy/thread_pool.cc) \
+$(wildcard tensorflow/lite/experimental/ruy/trace.cc) \
+$(wildcard tensorflow/lite/experimental/ruy/trmul.cc) \
+$(wildcard tensorflow/lite/experimental/ruy/tune.cc) \
+$(wildcard tensorflow/lite/experimental/ruy/wait.cc)
 ifneq ($(BUILD_TYPE),micro)
 CORE_CC_ALL_SRCS += \
 $(wildcard tensorflow/lite/kernels/*.cc) \
